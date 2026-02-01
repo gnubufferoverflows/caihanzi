@@ -10,7 +10,7 @@ import ProfileModal from './components/ProfileModal';
 import AppealModal from './components/AppealModal';
 import PaletteManager from './components/PaletteManager';
 import Logo from './components/Logo';
-import { HSKLevel, PracticeMode, PracticeScope, HanziData, EvaluationResult, PracticeSource, CustomPalette, SentenceData, AudioEvaluationResult } from './types';
+import { HSKLevel, PracticeMode, PracticeScope, HanziData, EvaluationResult, PracticeSource, CustomPalette, SentenceData, AudioEvaluationResult, DifficultyLevel } from './types';
 import { fetchRandomCharacter, validateHandwriting, fetchCharacterDetails, adjudicateHandwriting, fetchRandomSentence, validatePronunciation } from './services/gemini';
 
 const App: React.FC = () => {
@@ -50,6 +50,10 @@ const App: React.FC = () => {
   const [canvasSize, setCanvasSize] = useState<number>(() => {
     const saved = localStorage.getItem('zenhanzi_canvas_size');
     return saved ? parseInt(saved, 10) : 320;
+  });
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>(() => {
+    const saved = localStorage.getItem('zenhanzi_difficulty');
+    return (saved as DifficultyLevel) || 'MEDIUM';
   });
   const [showSettings, setShowSettings] = useState(false);
 
@@ -103,10 +107,11 @@ const App: React.FC = () => {
     }
   }, [masteredChars, retryQueue, customPalettes, username]);
 
-  // Persist Canvas Size
+  // Persist Settings
   useEffect(() => {
     localStorage.setItem('zenhanzi_canvas_size', canvasSize.toString());
-  }, [canvasSize]);
+    localStorage.setItem('zenhanzi_difficulty', difficulty);
+  }, [canvasSize, difficulty]);
 
 
   // Load Content Logic (Char or Sentence)
@@ -248,8 +253,9 @@ const App: React.FC = () => {
 
         const annotatedImageData = canvas.getAnnotatedImageData();
         const strokeCount = canvas.getStrokeCount();
+        const hasPressure = canvas.hasDetectedPressure();
 
-        const checkPromise = validateHandwriting(annotatedImageData, charData.char, strokeCount)
+        const checkPromise = validateHandwriting(annotatedImageData, charData.char, strokeCount, hasPressure, difficulty)
           .then(res => ({ index: idx, result: res }))
           .catch(err => ({ index: idx, result: { isCorrect: false, score: 0, feedback: "Error" } as EvaluationResult }));
         
@@ -279,9 +285,10 @@ const App: React.FC = () => {
       // SINGLE CHAR CHECK
       const annotatedImageData = singleCanvasRef.current.getAnnotatedImageData();
       const strokeCount = singleCanvasRef.current.getStrokeCount();
+      const hasPressure = singleCanvasRef.current.hasDetectedPressure();
       
       try {
-        const evaluation = await validateHandwriting(annotatedImageData, currentHanzi.char, strokeCount);
+        const evaluation = await validateHandwriting(annotatedImageData, currentHanzi.char, strokeCount, hasPressure, difficulty);
         setResult(evaluation);
 
         if (evaluation.isCorrect && evaluation.score >= 80) {
@@ -780,47 +787,77 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* Canvas Size Slider Section - Only relevant for Single Char Mode mostly, but affects max size of grid items */}
-        {scope === 'CHAR' && (
-            <div className="mt-8 w-full max-w-md px-4">
+        {/* Settings Area */}
+        <div className="mt-8 w-full max-w-md px-4 pb-12">
             <button 
                 onClick={() => setShowSettings(!showSettings)}
                 className="flex items-center gap-2 text-xs font-medium text-stone-400 hover:text-stone-600 transition-colors mx-auto mb-2"
             >
                 <SlidersHorizontal size={14} />
-                <span>Adjust Canvas Size</span>
+                <span>Adjust Settings</span>
             </button>
             
             {showSettings && (
-                <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm animate-in fade-in slide-in-from-top-1">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-stone-600">Canvas Size</span>
-                    <span className="text-xs text-stone-400">{canvasSize}px</span>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={() => setCanvasSize(s => Math.max(280, s - 10))} className="p-1 text-stone-400 hover:text-stone-900">
-                        <Minus size={16} />
-                    </button>
-                    <input 
-                        type="range" 
-                        min="280" 
-                        max="600" 
-                        step="10"
-                        value={canvasSize}
-                        onChange={(e) => setCanvasSize(Number(e.target.value))}
-                        className="flex-1 h-1.5 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-stone-900"
-                    />
-                    <button onClick={() => setCanvasSize(s => Math.min(600, s + 10))} className="p-1 text-stone-400 hover:text-stone-900">
-                        <Plus size={16} />
-                    </button>
-                </div>
-                <div className="text-[10px] text-stone-400 mt-2 text-center">
-                    Resizing will clear the current canvas.
-                </div>
+                <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm animate-in fade-in slide-in-from-top-1 space-y-4">
+                  
+                  {/* Canvas Size */}
+                  {scope === 'CHAR' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-stone-600">Canvas Size</span>
+                          <span className="text-xs text-stone-400">{canvasSize}px</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                          <button onClick={() => setCanvasSize(s => Math.max(280, s - 10))} className="p-1 text-stone-400 hover:text-stone-900">
+                              <Minus size={16} />
+                          </button>
+                          <input 
+                              type="range" 
+                              min="280" 
+                              max="600" 
+                              step="10"
+                              value={canvasSize}
+                              onChange={(e) => setCanvasSize(Number(e.target.value))}
+                              className="flex-1 h-1.5 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-stone-900"
+                          />
+                          <button onClick={() => setCanvasSize(s => Math.min(600, s + 10))} className="p-1 text-stone-400 hover:text-stone-900">
+                              <Plus size={16} />
+                          </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Difficulty Setting */}
+                  <div>
+                    <div className="text-xs font-bold text-stone-600 mb-2">Grading Difficulty</div>
+                    <div className="flex gap-2">
+                      {(['EASY', 'MEDIUM', 'EXPERT'] as DifficultyLevel[]).map(d => (
+                        <button
+                          key={d}
+                          onClick={() => setDifficulty(d)}
+                          className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors border ${
+                            difficulty === d 
+                              ? 'bg-stone-900 text-white border-stone-900' 
+                              : 'bg-stone-50 text-stone-500 border-stone-100 hover:bg-stone-100'
+                          }`}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-stone-400 mt-2 leading-tight">
+                      {difficulty === 'EASY' && "Forgiving of minor wobbles. Focuses on stroke order."}
+                      {difficulty === 'MEDIUM' && "Standard grading. Expects clear strokes."}
+                      {difficulty === 'EXPERT' && "Strict calligraphy grading. Penalizes poor aesthetics."}
+                    </p>
+                  </div>
+
+                  <div className="text-[10px] text-stone-400 text-center pt-2 border-t border-stone-100">
+                      Settings are saved automatically.
+                  </div>
                 </div>
             )}
-            </div>
-        )}
+        </div>
 
         {/* Modals */}
         {showAppeal && appealTarget && (

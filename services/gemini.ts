@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { HSKLevel, HanziData, EvaluationResult, PracticeSource, SentenceData, AudioEvaluationResult } from "../types";
+import { HSKLevel, HanziData, EvaluationResult, PracticeSource, SentenceData, AudioEvaluationResult, DifficultyLevel } from "../types";
 
 // Helper to get AI instance with fresh key if needed
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -213,14 +213,35 @@ export const fetchRandomSentence = async (source: PracticeSource): Promise<Sente
 export const validateHandwriting = async (
   imageBase64: string,
   targetChar: string,
-  strokeCount: number
+  strokeCount: number,
+  hasPressure: boolean = false,
+  difficulty: DifficultyLevel = 'MEDIUM'
 ): Promise<EvaluationResult> => {
   const ai = getAI();
   const cleanBase64 = imageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
 
+  let difficultyInstructions = "";
+  switch (difficulty) {
+    case 'EASY':
+      difficultyInstructions = "Difficulty is set to EASY. Be very lenient with aesthetic imperfections, shaky lines, or minor proportion issues. As long as the strokes are generally in the right place and the correct order, it should pass.";
+      break;
+    case 'EXPERT':
+      difficultyInstructions = "Difficulty is set to EXPERT. Be strict. Penalize shaky lines, poor balance, bad proportions, or lack of confidence. The character must look beautiful and balanced.";
+      break;
+    default: // MEDIUM
+      difficultyInstructions = "Difficulty is set to MEDIUM. Standard grading. Expect clear strokes and reasonable proportions, but allow for minor mouse-drawing artifacts.";
+      break;
+  }
+
   const prompt = `Analyze this handwritten image. The user is attempting to write the Chinese character "${targetChar}".
   The user used ${strokeCount} strokes.
   
+  Input device pressure sensitivity: ${hasPressure ? "DETECTED (Pen/Stylus)" : "NOT DETECTED (Mouse/Touch)"}.
+  ${hasPressure ? "Since pressure was detected, evaluate the calligraphic quality (stroke weight variation) more strictly." : "Since no pressure was detected, ignore lack of stroke weight variation (thickness)."}
+  
+  GRADING DIFFICULTY: ${difficulty}
+  ${difficultyInstructions}
+
   CRITICAL - STROKE ORDER INDICATORS:
   The image has explicitly generated annotations to show the user's stroke order:
   1. GREEN CIRCLES with NUMBERS (1, 2, 3...) indicate the START position of each stroke.
@@ -231,7 +252,10 @@ export const validateHandwriting = async (
   2. Is the stroke count roughly correct?
   3. Using the numbered start points and red end points, does the stroke order follow the standard rules? (e.g. Top to bottom, Left to right, Outside before inside).
   
-  Ignore minor aesthetic imperfections, but penalize incorrect stroke order if the numbers clearly show a violation of standard rules.`;
+  FUNDAMENTAL FAIL CONDITIONS (Apply regardless of difficulty):
+  - If the stroke order violates standard rules based on the numbered indicators, you MUST mark isCorrect as FALSE.
+  - If the character is unrecognizable or has missing/extra fundamental strokes, mark isCorrect as FALSE.
+  `;
 
   try {
     const response: GenerateContentResponse = await retryOperation(() => ai.models.generateContent({
@@ -252,7 +276,7 @@ export const validateHandwriting = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            isCorrect: { type: Type.BOOLEAN, description: "True if legible, stroke count matches, and stroke order (verified by numbers) looks reasonably correct." },
+            isCorrect: { type: Type.BOOLEAN, description: "True if legible, stroke count matches, and stroke order (verified by numbers) is correct." },
             score: { type: Type.INTEGER, description: "0-100 rating. Deduct points for wrong stroke order." },
             feedback: { type: Type.STRING, description: "Specific feedback on shape or stroke order (max 15 words)" },
           },

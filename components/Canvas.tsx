@@ -15,6 +15,7 @@ export interface CanvasHandle {
   getAnnotatedImageData: () => string;
   isEmpty: () => boolean;
   getStrokeCount: () => number;
+  hasDetectedPressure: () => boolean;
 }
 
 const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ onInteract, width = 300, height = 300, className, readOnly = false }, ref) => {
@@ -24,6 +25,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ onInteract, width = 300,
   const [strokeCount, setStrokeCount] = useState(0);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
   const lastWidth = useRef<number>(6);
+  const hasPressureRef = useRef<boolean>(false);
   
   // Store raw stroke data for generating AI annotations
   const strokesRef = useRef<DrawingPoint[][]>([]);
@@ -39,6 +41,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ onInteract, width = 300,
         setStrokeCount(0);
         strokesRef.current = [];
         currentStrokeRef.current = [];
+        hasPressureRef.current = false;
       }
     },
     getImageData: () => {
@@ -93,7 +96,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ onInteract, width = 300,
       return offCanvas.toDataURL('image/png');
     },
     isEmpty: () => !hasContent,
-    getStrokeCount: () => strokeCount
+    getStrokeCount: () => strokeCount,
+    hasDetectedPressure: () => hasPressureRef.current
   }));
 
   const getCoordinates = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -112,6 +116,11 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ onInteract, width = 300,
     setIsDrawing(true);
     lastPos.current = { x, y };
     
+    // Check for pressure sensitivity (0.5 is default for non-pressure devices)
+    if (e.pointerType === 'pen' && e.pressure !== 0.5) {
+      hasPressureRef.current = true;
+    }
+
     // Start tracking new stroke path
     currentStrokeRef.current = [{ x, y }];
     
@@ -147,6 +156,11 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ onInteract, width = 300,
     if (readOnly) return;
     e.preventDefault();
     if (!isDrawing || !lastPos.current || !canvasRef.current) return;
+
+    // Check for pressure sensitivity during draw as well
+    if (e.pointerType === 'pen' && e.pressure !== 0.5) {
+      hasPressureRef.current = true;
+    }
 
     const ctx = canvasRef.current.getContext('2d');
     const { x, y } = getCoordinates(e);

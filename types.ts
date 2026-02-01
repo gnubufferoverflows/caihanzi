@@ -33,6 +33,8 @@ export enum PracticeMode {
 
 export type PracticeScope = 'CHAR' | 'SENTENCE';
 
+export type DifficultyLevel = 'EASY' | 'MEDIUM' | 'EXPERT';
+
 export interface HanziData {
   char: string;
   pinyin: string;
