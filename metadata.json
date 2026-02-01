@@ -1,0 +1,5 @@
+{
+  "name": "彩汉字",
+  "description": "A minimalist, AI-powered Chinese character writing practice application. Features HSK level selection, pinyin recall mode, and real-time handwriting feedback using Gemini Vision.",
+  "requestFramePermissions": []
+}
