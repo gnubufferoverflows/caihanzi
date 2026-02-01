@@ -31,16 +31,33 @@ export enum PracticeMode {
   RECALL = 'RECALL', // Show pinyin/meaning, user recalls
 }
 
+export type PracticeScope = 'CHAR' | 'SENTENCE';
+
 export interface HanziData {
   char: string;
   pinyin: string;
   meaning: string;
 }
 
+export interface SentenceData {
+  text: string;
+  pinyin: string;
+  meaning: string;
+  breakdown: HanziData[];
+}
+
 export interface EvaluationResult {
   isCorrect: boolean;
   score: number;
   feedback: string;
+}
+
+export interface AudioEvaluationResult {
+  isCorrect: boolean;
+  score: number;
+  feedback: string;
+  pronunciationTips: string;
+  heardPinyin?: string;
 }
 
 export interface DrawingPoint {
